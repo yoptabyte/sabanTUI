@@ -5,8 +5,8 @@ use std::env;
 use std::io::ErrorKind;
 use std::process::{Command, Stdio};
 use tracing::{debug, warn, info, error};
-use zbus::fdo::PropertiesProxy;
-use zbus::names::InterfaceName;
+use zbus::fdo::{DBusProxy, PropertiesProxy};
+use zbus::names::{BusName, InterfaceName};
 use zbus::zvariant::Value;
 use zbus::{Connection, Error as ZbusError};
 use tokio::time::{sleep, Duration};
@@ -83,16 +83,33 @@ impl WlrootsBackend {
                 }
             };
 
-            match Self::build_properties_proxy(&conn, GAMMARELAY_PATH).await {
-                Ok(_) => {
+            let dbus = match DBusProxy::new(&conn).await {
+                Ok(proxy) => proxy,
+                Err(err) => {
+                    attempts += 1;
+                    debug!(attempt = attempts, ?err, "failed to build DBus proxy for wl-gammarelay");
+                    if attempts >= GAMMARELAY_MAX_ATTEMPTS {
+                        error!(?err, "giving up building DBus proxy for wl-gammarelay");
+                        return Err(err.into());
+                    }
+                    sleep(GAMMARELAY_RETRY_DELAY).await;
+                    continue;
+                }
+            };
+
+            match dbus
+                .name_has_owner(zbus::names::BusName::try_from(GAMMARELAY_DESTINATION)?)
+                .await
+            {
+                Ok(true) => {
                     if spawned {
                         info!(attempts = attempts + 1, "wl-gammarelay appeared on D-Bus");
+                    } else {
+                        debug!("wl-gammarelay already present on D-Bus");
                     }
                     return Ok(());
                 }
-                Err(ZbusError::FDO(err))
-                    if matches!(*err, zbus::fdo::Error::NameHasNoOwner(_) | zbus::fdo::Error::ServiceUnknown(_)) =>
-                {
+                Ok(false) => {
                     if attempts >= GAMMARELAY_MAX_ATTEMPTS {
                         error!(attempts, "wl-gammarelay service did not appear after retries");
                         bail!("wl-gammarelay service is unavailable");
@@ -100,10 +117,12 @@ impl WlrootsBackend {
 
                     if !spawned {
                         debug!("wl-gammarelay service not running; attempting to launch");
+                        drop(dbus);
                         drop(conn);
                         Self::start_gammarelay_process().await?;
                         spawned = true;
                         attempts = 0;
+                        continue;
                     }
 
                     attempts += 1;
@@ -111,8 +130,13 @@ impl WlrootsBackend {
                     sleep(GAMMARELAY_RETRY_DELAY).await;
                 }
                 Err(err) => {
-                    error!(?err, "unexpected error while building wl-gammarelay proxy");
-                    return Err(err.into());
+                    attempts += 1;
+                    debug!(attempt = attempts, ?err, "error querying wl-gammarelay owner");
+                    if attempts >= GAMMARELAY_MAX_ATTEMPTS {
+                        error!(?err, "giving up querying wl-gammarelay owner");
+                        return Err(err.into());
+                    }
+                    sleep(GAMMARELAY_RETRY_DELAY).await;
                 }
             }
         }
