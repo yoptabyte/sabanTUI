@@ -1,0 +1,32 @@
+# === Rust build artifacts ===
+/target/
+**/target/
+**/*.rs.bk
+
+# Cargo & tooling caches
+/.cargo/
+/.rustup/
+/.rustfmt.toml.bk
+
+# Debug & profiling outputs
+**/*.profdata
+**/*.dSYM/
+
+# Logs
+*.log
+
+# === Nix build artifacts ===
+/result
+/result-*
+/nix-result
+/nix-results
+
+# direnv & environment files
+/.direnv/
+/.envrc
+.env
+.env.*
+
+# Miscellaneous
+.DS_Store
+Thumbs.db
