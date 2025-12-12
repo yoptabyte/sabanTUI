@@ -49,4 +49,5 @@ pub enum Commands {
 pub enum BackendSelector {
     X11,
     Wlroots,
+    Gnome,
 }

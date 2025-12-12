@@ -12,6 +12,7 @@ use crate::models::{DisplayMode, DisplayOutput};
 pub enum BackendKind {
     X11,
     Wlroots,
+    Gnome,
 }
 
 impl BackendKind {
@@ -19,6 +20,16 @@ impl BackendKind {
         let wayland_display = env::var("WAYLAND_DISPLAY").ok();
 
         if wayland_display.is_some() {
+            // Prefer GNOME backend when running under GNOME.
+            let desktop = env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+            if cfg!(feature = "backend-gnome")
+                && desktop
+                    .split(':')
+                    .any(|part| part.eq_ignore_ascii_case("GNOME"))
+            {
+                return BackendKind::Gnome;
+            }
+
             BackendKind::Wlroots
         } else {
             BackendKind::X11
@@ -31,6 +42,7 @@ impl From<BackendSelector> for BackendKind {
         match value {
             BackendSelector::X11 => BackendKind::X11,
             BackendSelector::Wlroots => BackendKind::Wlroots,
+            BackendSelector::Gnome => BackendKind::Gnome,
         }
     }
 }
@@ -94,6 +106,7 @@ impl BackendRegistry {
         match kind {
             BackendKind::X11 => Ok(Box::new(crate::backend::x11::X11Backend::new()?)),
             BackendKind::Wlroots => Ok(Box::new(crate::backend::wlroots::WlrootsBackend::new()?)),
+            BackendKind::Gnome => Ok(Box::new(crate::backend::gnome::GnomeBackend::new()?)),
         }
     }
 
@@ -175,5 +188,6 @@ impl BackendRegistry {
     }
 }
 
+pub mod gnome;
 pub mod x11;
 pub mod wlroots;

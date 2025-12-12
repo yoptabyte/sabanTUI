@@ -5,7 +5,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use ratatui::{Frame, Terminal};
 use std::io;
 use std::time::{Duration, Instant};
@@ -194,6 +194,7 @@ impl TuiState {
         match self.backend {
             BackendKind::X11 => "X11",
             BackendKind::Wlroots => "Wlroots",
+            BackendKind::Gnome => "GNOME",
         }
     }
 

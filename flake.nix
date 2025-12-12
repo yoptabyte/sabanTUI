@@ -25,7 +25,14 @@
             pkgs.rustPlatform.buildRustPackage {
               pname = "sabantui";
               version = "0.1.0";
-              src = self;
+              # Use the working tree so local (uncommitted / untracked) files are included.
+              # This avoids flake-source filtering dropping new modules like src/backend/gnome.rs.
+              src = lib.cleanSourceWith {
+                src = ./.;
+                filter = path: type:
+                  let base = builtins.baseNameOf path;
+                  in !(base == "target" || base == "result" || base == ".direnv");
+              };
               cargoLock.lockFile = cargoLockPath;
               nativeBuildInputs = [
                 pkgs.pkg-config
@@ -37,6 +44,7 @@
                 pkgs.wlr-randr
                 pkgs.wl-mirror
                 pkgs.wl-gammarelay-rs
+                pkgs.gammastep
                 pkgs.xorg.libX11
                 pkgs.xorg.libXrandr
               ];
@@ -46,6 +54,7 @@
                     pkgs.wlr-randr
                     pkgs.wl-mirror
                     pkgs.wl-gammarelay-rs
+                    pkgs.gammastep
                   ]}
               '';
               meta = with lib; {

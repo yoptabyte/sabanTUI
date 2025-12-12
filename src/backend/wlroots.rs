@@ -6,7 +6,7 @@ use std::io::ErrorKind;
 use std::process::{Command, Stdio};
 use tracing::{debug, warn, info, error};
 use zbus::fdo::{DBusProxy, PropertiesProxy};
-use zbus::names::{BusName, InterfaceName};
+use zbus::names::InterfaceName;
 use zbus::zvariant::Value;
 use zbus::{Connection, Error as ZbusError};
 use tokio::time::{sleep, Duration};
