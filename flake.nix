@@ -40,6 +40,7 @@
               ];
               buildInputs = [
                 pkgs.dbus
+                pkgs.glib
                 pkgs.wayland
                 pkgs.wlr-randr
                 pkgs.wl-mirror
@@ -51,6 +52,7 @@
               postInstall = ''
                 wrapProgram $out/bin/sabantui \
                   --prefix PATH : ${lib.makeBinPath [
+                    pkgs.glib
                     pkgs.wlr-randr
                     pkgs.wl-mirror
                     pkgs.wl-gammarelay-rs
@@ -74,6 +76,7 @@
             rust-analyzer
             pkg-config
             dbus
+            glib
             wayland
             wlr-randr
             wl-mirror

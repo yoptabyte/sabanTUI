@@ -391,7 +391,22 @@ impl TuiState {
                 "flipped-270°".to_string(),
             ],
             Field::Mirror => {
-                if self.mirror_pending.is_some() {
+                // Two different concepts:
+                // - On wlroots, we keep the old "wl-mirror window" workflow with scaling.
+                // - On GNOME, use compositor-native display mirroring (Mutter config).
+                if self.backend == BackendKind::Gnome {
+                    let mut items = vec![];
+                    items.push("Unmirror (split displays)".to_string());
+                    for other in &self.outputs {
+                        if other.name != output.name && other.enabled {
+                            items.push(format!("Mirror displays with {}", other.name));
+                        }
+                    }
+                    if items.len() == 1 {
+                        items.push("No other outputs available".to_string());
+                    }
+                    items
+                } else if self.mirror_pending.is_some() {
                     let mut items: Vec<String> = MirrorScaling::all()
                         .iter()
                         .map(|scaling| scaling.label().to_string())
@@ -420,21 +435,61 @@ impl TuiState {
                     items
                 }
             }
-            Field::Scale => vec![
-                "0.5x".to_string(),
-                "0.75x".to_string(),
-                "1.0x".to_string(),
-                "1.25x".to_string(),
-                "1.5x".to_string(),
-                "2.0x".to_string(),
-            ],
+            Field::Scale => {
+                if self.backend == BackendKind::Gnome {
+                    if let Some(scales) = output.available_scales.as_ref() {
+                        let mut items: Vec<String> = scales.iter().map(|s| format!("{:.2}x", s)).collect();
+                        if items.is_empty() {
+                            items.push("Not supported".to_string());
+                        }
+                        items
+                    } else {
+                        vec!["Not supported".to_string()]
+                    }
+                } else {
+                    vec![
+                        "0.5x".to_string(),
+                        "0.75x".to_string(),
+                        "1.0x".to_string(),
+                        "1.25x".to_string(),
+                        "1.5x".to_string(),
+                        "2.0x".to_string(),
+                    ]
+                }
+            },
             Field::AdaptiveSync => vec![
-                "Enable".to_string(),
-                "Disable".to_string(),
+                if self.backend == BackendKind::Wlroots {
+                    "Enable".to_string()
+                } else {
+                    "Not supported".to_string()
+                },
+                if self.backend == BackendKind::Wlroots {
+                    "Disable".to_string()
+                } else {
+                    "Not supported".to_string()
+                },
             ],
-            Field::Brightness => vec!["+5%".to_string(), "-5%".to_string()],
-            Field::Gamma => vec!["+0.1".to_string(), "-0.1".to_string()],
-            Field::Temperature => vec!["+100K".to_string(), "-100K".to_string()],
+            Field::Brightness => {
+                if output.color_caps.brightness {
+                    vec!["+5%".to_string(), "-5%".to_string()]
+                } else {
+                    vec!["Not supported".to_string()]
+                }
+            }
+            Field::Gamma => {
+                if output.color_caps.gamma {
+                    vec!["+0.1".to_string(), "-0.1".to_string()]
+                } else {
+                    vec!["Not supported".to_string()]
+                }
+            }
+            Field::Temperature => {
+                if output.color_caps.temperature {
+                    vec!["+100K".to_string(), "-100K".to_string()]
+                } else {
+                    vec!["Not supported".to_string()]
+                }
+            }
         }
     }
 
@@ -482,6 +537,10 @@ impl TuiState {
                 }
             }
             Field::Brightness => {
+                if !output.color_caps.brightness {
+                    self.status = format!("{name}: brightness not supported on this backend");
+                    return Ok(());
+                }
                 let current = output.color.brightness.unwrap_or(1.0);
                 let delta = if self.dropdown_selection == 0 { 0.05 } else { -0.05 };
                 let new_value = (current + delta).clamp(0.0, 1.0);
@@ -499,6 +558,10 @@ impl TuiState {
                 self.status = format!("{}: brightness {:.0}%", name, new_value * 100.0);
             }
             Field::Gamma => {
+                if !output.color_caps.gamma {
+                    self.status = format!("{name}: gamma not supported on this backend");
+                    return Ok(());
+                }
                 let current = output.color.gamma.unwrap_or(1.0);
                 let delta = if self.dropdown_selection == 0 { 0.1 } else { -0.1 };
                 let new_value = (current + delta).max(0.1);
@@ -516,6 +579,10 @@ impl TuiState {
                 self.status = format!("{}: gamma {:.2}", name, new_value);
             }
             Field::Temperature => {
+                if !output.color_caps.temperature {
+                    self.status = format!("{name}: temperature not supported on this backend");
+                    return Ok(());
+                }
                 let current = output.color.temperature.unwrap_or(6500);
                 let delta = if self.dropdown_selection == 0 { 100 } else { -100 };
                 let new_value = ((current as i32) + delta).clamp(1000, 10000) as u16;
@@ -562,6 +629,28 @@ impl TuiState {
             Field::Mirror => {
                 let items = self.get_dropdown_items();
                 if let Some(item) = items.get(self.dropdown_selection) {
+                    if self.backend == BackendKind::Gnome {
+                        if item == "No other outputs available" {
+                            return Ok(());
+                        }
+                        if item == "Unmirror (split displays)" {
+                            // Best-effort: toggling forces Mutter to split the logical monitor.
+                            // This is intentionally conservative and doesn't try to restore old geometry.
+                            self.registry.execute_apply(self.backend, &name, None, None, None, None, None, Some(false))?;
+                            self.registry.execute_apply(self.backend, &name, None, None, None, None, None, Some(true))?;
+                            self.refresh_outputs()?;
+                            self.status = format!("{name}: unmirrored (split displays)");
+                            return Ok(());
+                        }
+                        if let Some(target) = item.strip_prefix("Mirror displays with ") {
+                            self.registry.execute_mirror(self.backend, &name, target)?;
+                            self.refresh_outputs()?;
+                            self.status = format!("{name}: mirroring displays with {target}");
+                            return Ok(());
+                        }
+                        return Ok(());
+                    }
+
                     if let Some(pending) = self.mirror_pending.clone() {
                         if item == "Cancel" {
                             self.mirror_pending = None;
@@ -607,6 +696,29 @@ impl TuiState {
                 }
             }
             Field::Scale => {
+                if self.backend == BackendKind::Gnome {
+                    let Some(scales) = output.available_scales.as_ref() else {
+                        self.status = format!("{name}: scale not supported on this backend");
+                        return Ok(());
+                    };
+                    let Some(&scale) = scales.get(self.dropdown_selection) else {
+                        return Ok(());
+                    };
+                    self.registry.execute_apply(
+                        self.backend,
+                        &name,
+                        None,
+                        Some(scale),
+                        None,
+                        None,
+                        None,
+                        None,
+                    )?;
+                    self.refresh_outputs()?;
+                    self.status = format!("{}: scale {:.2}x", name, scale);
+                    return Ok(());
+                }
+
                 let scales = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
                 if let Some(&scale) = scales.get(self.dropdown_selection) {
                     self.registry.execute_apply(
@@ -624,6 +736,10 @@ impl TuiState {
                 }
             }
             Field::AdaptiveSync => {
+                if self.backend != BackendKind::Wlroots {
+                    self.status = format!("{name}: adaptive sync not supported on this backend");
+                    return Ok(());
+                }
                 let enabled = self.dropdown_selection == 0;
                 self.apply_adaptive_sync(&name, enabled)?;
             }

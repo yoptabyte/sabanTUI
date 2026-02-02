@@ -302,6 +302,8 @@ pub struct DisplayOutput {
     pub color: DisplayColorSettings,
     pub color_caps: DisplayColorCapabilities,
     pub scale: Option<f64>,
+    #[serde(default)]
+    pub available_scales: Option<Vec<f64>>,
 }
 
 impl DisplayOutput {
@@ -317,6 +319,7 @@ impl DisplayOutput {
             color: DisplayColorSettings::default(),
             color_caps: DisplayColorCapabilities::default(),
             scale: None,
+            available_scales: None,
         }
     }
 

@@ -27,12 +27,13 @@ impl AppRuntime {
                 output,
                 mode,
                 refresh,
+                scale,
                 brightness,
                 gamma,
                 temperature,
-                position: _,
-                orientation: _,
-                mirror: _,
+                position,
+                orientation,
+                mirror,
                 enabled,
             }) => {
                 let backend = backend
@@ -44,12 +45,28 @@ impl AppRuntime {
                     backend,
                     output,
                     mode,
-                    None,
+                    *scale,
                     *brightness,
                     *gamma,
                     *temperature,
                     *enabled,
-                )
+                )?;
+
+                if let Some(pos) = position.as_deref() {
+                    let (x, y) = parse_position(pos)?;
+                    registry.execute_position(backend, output, x, y)?;
+                }
+
+                if let Some(orientation) = orientation.as_deref() {
+                    let transform = normalize_transform(orientation)?;
+                    registry.execute_transform(backend, output, &transform)?;
+                }
+
+                if let Some(target) = mirror.as_deref() {
+                    registry.execute_mirror(backend, output, target)?;
+                }
+
+                Ok(())
             }
             None => {
                 // Default to interactive TUI
@@ -80,4 +97,32 @@ fn parse_resolution(input: &str) -> Result<(u32, u32)> {
         .ok_or_else(|| anyhow::anyhow!("invalid mode format"))?
         .parse::<u32>()?;
     Ok((width, height))
+}
+
+fn parse_position(input: &str) -> Result<(i32, i32)> {
+    let s = input.trim();
+    let (a, b) = s
+        .split_once(',')
+        .or_else(|| s.split_once('x'))
+        .ok_or_else(|| anyhow::anyhow!("invalid position format (expected X,Y)"))?;
+    let x = a.trim().parse::<i32>()?;
+    let y = b.trim().parse::<i32>()?;
+    Ok((x, y))
+}
+
+fn normalize_transform(input: &str) -> Result<String> {
+    let s = input.trim().to_ascii_lowercase().replace('°', "");
+    let s = s.as_str();
+    let out = match s {
+        "normal" | "0" => "normal",
+        "90" | "left" => "90",
+        "180" | "inverted" => "180",
+        "270" | "right" => "270",
+        "flipped" | "flip" => "flipped",
+        "flipped-90" | "flip-90" => "flipped-90",
+        "flipped-180" | "flip-180" => "flipped-180",
+        "flipped-270" | "flip-270" => "flipped-270",
+        other => return Err(anyhow::anyhow!("unsupported orientation/transform: {other}")),
+    };
+    Ok(out.to_string())
 }

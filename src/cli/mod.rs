@@ -25,13 +25,16 @@ pub enum Commands {
         mode: Option<String>,
         #[arg(long)]
         refresh: Option<u32>,
+        /// Scale factor (e.g. 1.0, 1.25, 2.0)
+        #[arg(long)]
+        scale: Option<f64>,
         /// Target brightness value in range 0.0 - 1.0
         #[arg(long)]
         brightness: Option<f32>,
         /// Gamma multiplier (e.g. 1.0 is neutral)
         #[arg(long)]
         gamma: Option<f32>,
-        /// Color temperature in mireds (1000 - 10000)
+        /// Color temperature in Kelvin (1000 - 10000)
         #[arg(long, alias = "temp")]
         temperature: Option<u16>,
         #[arg(long)]

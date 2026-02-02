@@ -3,10 +3,21 @@ use std::env;
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use tokio::runtime::Runtime;
+use tokio::time::{timeout, Duration};
 use tracing::info;
 
 use crate::cli::BackendSelector;
 use crate::models::{DisplayMode, DisplayOutput};
+
+#[cfg(feature = "backend-gnome")]
+use zbus::fdo::DBusProxy;
+#[cfg(feature = "backend-gnome")]
+use zbus::names::BusName;
+#[cfg(feature = "backend-gnome")]
+use zbus::Connection;
+
+#[cfg(feature = "backend-gnome")]
+const MUTTER_DISPLAYCONFIG_BUS: &str = "org.gnome.Mutter.DisplayConfig";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackendKind {
@@ -16,17 +27,67 @@ pub enum BackendKind {
 }
 
 impl BackendKind {
+    #[cfg(feature = "backend-gnome")]
+    async fn mutter_displayconfig_available() -> bool {
+        let Ok(conn) = Connection::session().await else {
+            return false;
+        };
+        let Ok(proxy) = DBusProxy::new(&conn).await else {
+            return false;
+        };
+        let Ok(bus) = BusName::try_from(MUTTER_DISPLAYCONFIG_BUS) else {
+            return false;
+        };
+        proxy.name_has_owner(bus).await.unwrap_or(false)
+    }
+
+    #[cfg(feature = "backend-gnome")]
+    fn mutter_displayconfig_available_blocking() -> bool {
+        // Autodetection runs before we necessarily have a runtime; create a tiny one.
+        // Keep this fast and bounded to avoid hanging on broken D-Bus sessions.
+        let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        else {
+            return false;
+        };
+
+        rt.block_on(async {
+            timeout(Duration::from_millis(250), Self::mutter_displayconfig_available())
+                .await
+                .unwrap_or(false)
+        })
+    }
+
     pub fn auto_detect() -> Self {
         let wayland_display = env::var("WAYLAND_DISPLAY").ok();
 
         if wayland_display.is_some() {
-            // Prefer GNOME backend when running under GNOME.
-            let desktop = env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-            if cfg!(feature = "backend-gnome")
-                && desktop
-                    .split(':')
-                    .any(|part| part.eq_ignore_ascii_case("GNOME"))
+            // Prefer Mutter D-Bus backend whenever it is actually available.
+            // This is more robust than trusting XDG_* env vars (which are often missing in
+            // non-interactive shells / systemd user services).
+            #[cfg(feature = "backend-gnome")]
             {
+                if Self::mutter_displayconfig_available_blocking() {
+                    return BackendKind::Gnome;
+                }
+            }
+
+            // Fallback heuristic: if env vars clearly indicate GNOME, pick it even if the D-Bus
+            // check failed (e.g. transient bus startup).
+            let desktop = env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
+            let session_desktop = env::var("XDG_SESSION_DESKTOP").unwrap_or_default();
+            let desktop_session = env::var("DESKTOP_SESSION").unwrap_or_default();
+            let gnomeish = [
+                desktop.as_str(),
+                session_desktop.as_str(),
+                desktop_session.as_str(),
+            ]
+            .iter()
+            .flat_map(|v| v.split(':'))
+            .any(|part| part.eq_ignore_ascii_case("GNOME") || part.eq_ignore_ascii_case("ubuntu"));
+
+            if cfg!(feature = "backend-gnome") && gnomeish {
                 return BackendKind::Gnome;
             }
 
@@ -112,8 +173,33 @@ impl BackendRegistry {
 
     pub fn fetch_outputs(&self, kind: BackendKind) -> Result<Vec<DisplayOutput>> {
         let backend = self.get_backend(kind)?;
-        self.runtime
-            .block_on(async move { backend.list_outputs().await })
+        let result = self.runtime.block_on(async move { backend.list_outputs().await });
+
+        // GNOME Wayland (Mutter) does NOT support wlr-output-management. If we guessed wlroots
+        // anyway, fall back to the Mutter D-Bus backend when it is available.
+        if kind == BackendKind::Wlroots {
+            if let Err(err) = &result {
+                let msg = err.to_string();
+                if msg.contains("wlr-output-management-unstable-v1")
+                {
+                    #[cfg(feature = "backend-gnome")]
+                    {
+                        let available = self.runtime.block_on(async {
+                            timeout(Duration::from_millis(250), BackendKind::mutter_displayconfig_available())
+                                .await
+                                .unwrap_or(false)
+                        });
+                        if available {
+                            info!("wlroots backend unsupported on this compositor; falling back to GNOME backend");
+                            let gnome = self.get_backend(BackendKind::Gnome)?;
+                            return self.runtime.block_on(async move { gnome.list_outputs().await });
+                        }
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     pub fn dispatch_list(&self, kind: BackendKind) -> Result<()> {
@@ -164,6 +250,11 @@ impl BackendRegistry {
         self.runtime.block_on(async move {
             backend.set_position_relative(output, relative_to, direction).await
         })
+    }
+
+    pub fn execute_position(&self, kind: BackendKind, output: &str, x: i32, y: i32) -> Result<()> {
+        let backend = self.get_backend(kind)?;
+        self.runtime.block_on(async move { backend.set_position(output, x, y).await })
     }
 
     pub fn execute_transform(&self, kind: BackendKind, output: &str, transform: &str) -> Result<()> {
