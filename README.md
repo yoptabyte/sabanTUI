@@ -1,4 +1,6 @@
-# unirandr
+# sabanTUI
+
+![Logo](Logo.png)
 
 Universal TUI and CLI utility for managing display configurations across X11, wlroots-based Wayland compositors, GNOME Mutter, and KDE Plasma environments.
 
@@ -13,7 +15,7 @@ Universal TUI and CLI utility for managing display configurations across X11, wl
 
 ```
 +-------------------+
-|      unirandr     |
+|     sabanTUI      |
 | (CLI + Ratatui)   |
 +---------+---------+
           |
@@ -21,36 +23,39 @@ Universal TUI and CLI utility for managing display configurations across X11, wl
    |             |
 +--v--+       +--v--+
 | CLI |       | TUI |
-+--+--+       +--+--+
-   |             |
-   +------+------+-----------+-----------+
-          |                  |           |
-      +---v----+      +------v-----+ +---v---+
-      | Backend| ...  | Backend    | | ...   |
-      | X11    |      | GNOME      |         |
-      +---+----+      +------+-----+         |
-          |                  |               |
-    xrandr-rs API        Mutter D-Bus   etc.
++-----+-------+-----+
+      |               |
+      +---+---+---+---+---+---+
+          |   |   |   |   |   |
+      +---v---+   |   |   +---v---+
+      | X11    |   |   |   | KDE   |
+      +---+----+   |   |   +---+---+
+          |        |   |       |
+      xrandr      |   |   kscreen-doctor
+                  |   |
+              +---v---+   +---v---+
+              | GNOME  |   | ...   |
+              +---+----+   +-------+
+                  |
+            Mutter D-Bus
 ```
 
-### Crate layout (planned)
+### Crate layout
 
 ```
 src/
-├── main.rs              # CLI entrypoint, command parsing, runtime bootstrap
-├── app.rs               # High-level mode/state management shared by TUI + CLI
-├── tui/
-│   ├── mod.rs          # Ratatui UI scaffolding
-│   └── widgets.rs      # Custom widgets (output list, mode picker, etc.)
+├── main.rs              # CLI entrypoint, tracing init, runtime bootstrap
+├── app.rs               # AppRuntime – routes CLI commands to backends
+├── models.rs            # Shared data models (DisplayOutput, DisplayMode, etc.)
 ├── cli/
-│   └── mod.rs          # clap command definitions, argument parsing helpers
-├── backend/
-│   ├── mod.rs          # Backend trait definitions + factory selection
-│   ├── x11.rs          # xrandr backend implementation
-│   ├── wlroots.rs      # way-displays integration
-│   ├── gnome.rs        # Mutter D-Bus client
-│   └── kde.rs          # kscreen-doctor invocation
-└── models.rs           # Shared data models (Output, Mode, Layout, etc.)
+│   └── mod.rs          # clap command definitions with short flags
+├── tui/
+│   └── mod.rs          # Ratatui UI: state, event loop, rendering
+└── backend/
+    ├── mod.rs          # DisplayBackend trait + BackendRegistry + auto-detection
+    ├── x11.rs          # xrandr CLI backend
+    ├── wlroots.rs      # wlr-randr + wl-gammarelay-rs backend
+    └── gnome.rs        # Mutter D-Bus + gsettings + ddcutil backend
 ```
 
 ### Runtime flow
@@ -98,10 +103,32 @@ fn detect_backend(env: &Environment) -> BackendKind {
 
 ### External tooling integration
 
-- **way-displays** (wlroots): spawn command, parse JSON output when `--json` is exposed; otherwise parse text.
-- **kscreen-doctor** (KDE): spawn command and parse text output.
+- **wlr-randr** (wlroots): spawn command, parse JSON output (`--json`) or fallback to text parsing.
+- **wl-gammarelay-rs** (wlroots): D-Bus interface for brightness, gamma, and color temperature.
 - **zbus** (GNOME): interact with Mutter D-Bus API natively.
-- **xrandr** (X11): use `xrandr` crate for binding-level access.
+- **gsettings** (GNOME): Night Light color temperature control.
+- **ddcutil** (GNOME, optional): hardware brightness for external monitors via DDC/CI.
+- **xrandr** (X11): spawn `xrandr` CLI for mode/position/transform/mirror operations.
+
+### System dependencies
+
+The application requires external tools to be installed in your system (found via `PATH`). These dependencies are **not** bundled with the application - they must be provided by your distribution or desktop environment.
+
+**Required for X11:**
+- `xrandr` (part of xorg)
+
+**Required for Wayland (wlroots-based compositors - Sway, Hyprland, etc.):**
+- `wlr-randr` - display configuration
+- `wl-gammarelay-rs` - color temperature/brightness control
+
+**Required for GNOME:**
+- `gsettings` (part of glib) - night light control
+- `ddcutil` - hardware brightness for external monitors (optional, enables DDC/CI)
+
+**Optional:**
+- `wl-mirror` - for mirror functionality on wlroots
+
+On NixOS or with flakes, these tools can be installed via configuration. For traditional systems, install them via your package manager.
 
 ### Configuration persistence
 
@@ -117,11 +144,35 @@ Use `tracing` and `tracing-subscriber` for structured logging with env-filter to
 - Mock backend trait implementation for TUI state handling tests.
 - Integration tests gated behind feature flags to run on target systems (requires environment detection). For CI, run subset with dry-run mode.
 
+## CLI usage
+
+```bash
+# Launch interactive TUI
+sabantui
+
+# List detected outputs
+sabantui list
+sabantui list -b x11          # force X11 backend
+
+# Apply configuration (use `sabantui list` to find output names)
+sabantui apply -o <OUTPUT> -m 1920x1080 -r 144
+sabantui apply -o <OUTPUT> -s 1.25 -B 0.8
+sabantui apply -o <OUTPUT> -t 4500
+sabantui apply -o <OUTPUT> -p 1920,0
+sabantui apply -o <OUTPUT> -M <OTHER_OUTPUT>
+sabantui apply -o <OUTPUT> -e false    # disable output
+```
+
+Run `sabantui apply -h` for the full list of options.
+
 ## Roadmap
 
-1. Scaffolding (current): CLI skeleton, backend trait, environment detection.
-2. Implement X11 backend with `xrandr` crate.
-3. Integrate wlroots workflow via `way-displays` CLI invocations.
-4. Add GNOME (zbus) + KDE (kscreen-doctor) backends.
-5. Build Ratatui interface for interactive configuration.
-6. Persist profiles and add scriptable commands.
+1. ~~Scaffolding: CLI skeleton, backend trait, environment detection~~ ✅
+2. ~~X11 backend (xrandr CLI)~~ ✅
+3. ~~wlroots backend (wlr-randr + wl-gammarelay-rs)~~ ✅
+4. ~~GNOME backend (zbus + gsettings + ddcutil)~~ ✅
+5. ~~Ratatui TUI interface~~ ✅
+6. **KDE backend** (kscreen-doctor) — planned
+7. **Refactor**: split monolithic modules (gnome, tui, models)
+8. **Profile persistence**: YAML/JSON config for saved layouts
+9. **Scriptable commands**: `apply-profile`, `save-profile`

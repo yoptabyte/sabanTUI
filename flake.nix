@@ -49,16 +49,6 @@
                 pkgs.xorg.libX11
                 pkgs.xorg.libXrandr
               ];
-              postInstall = ''
-                wrapProgram $out/bin/sabantui \
-                  --prefix PATH : ${lib.makeBinPath [
-                    pkgs.glib
-                    pkgs.wlr-randr
-                    pkgs.wl-mirror
-                    pkgs.wl-gammarelay-rs
-                    pkgs.gammastep
-                  ]}
-              '';
               meta = with lib; {
                 description = "Universal terminal UI for display management across X11, Wayland, GNOME, and KDE";
                 license = licenses.mit;
