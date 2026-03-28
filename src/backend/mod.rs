@@ -24,6 +24,7 @@ pub enum BackendKind {
     X11,
     Wlroots,
     Gnome,
+    Kde,
 }
 
 impl BackendKind {
@@ -91,6 +92,19 @@ impl BackendKind {
                 return BackendKind::Gnome;
             }
 
+            let kdeish = [
+                desktop.as_str(),
+                session_desktop.as_str(),
+                desktop_session.as_str(),
+            ]
+            .iter()
+            .flat_map(|v| v.split(':'))
+            .any(|part| part.eq_ignore_ascii_case("KDE"));
+
+            if cfg!(feature = "backend-kde") && kdeish {
+                return BackendKind::Kde;
+            }
+
             BackendKind::Wlroots
         } else {
             BackendKind::X11
@@ -104,6 +118,7 @@ impl From<BackendSelector> for BackendKind {
             BackendSelector::X11 => BackendKind::X11,
             BackendSelector::Wlroots => BackendKind::Wlroots,
             BackendSelector::Gnome => BackendKind::Gnome,
+            BackendSelector::Kde => BackendKind::Kde,
         }
     }
 }
@@ -168,6 +183,7 @@ impl BackendRegistry {
             BackendKind::X11 => Ok(Box::new(crate::backend::x11::X11Backend::new()?)),
             BackendKind::Wlroots => Ok(Box::new(crate::backend::wlroots::WlrootsBackend::new()?)),
             BackendKind::Gnome => Ok(Box::new(crate::backend::gnome::GnomeBackend::new()?)),
+            BackendKind::Kde => Ok(Box::new(crate::backend::kde::KdeBackend::new()?)),
         }
     }
 
@@ -282,3 +298,4 @@ impl BackendRegistry {
 pub mod gnome;
 pub mod x11;
 pub mod wlroots;
+pub mod kde;

@@ -304,6 +304,10 @@ impl crate::backend::DisplayBackend for WlrootsBackend {
         let stdout = Self::run_command(&["--json"])?;
         let mut outputs = DisplayOutput::parse_from_wlr_randr(&stdout);
 
+        // We should also parse positions/transforms from wlr-randr,
+        // but it requires more complex parsing of the stdout if we want it for all.
+        // For now, at least we populated the model.
+
         if let Err(err) = Self::ensure_gammarelay_running().await {
             warn!(?err, "wl-gammarelay unavailable during output listing; color controls disabled");
         }

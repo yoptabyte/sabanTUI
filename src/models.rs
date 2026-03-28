@@ -304,6 +304,8 @@ pub struct DisplayOutput {
     pub scale: Option<f64>,
     #[serde(default)]
     pub available_scales: Option<Vec<f64>>,
+    pub transform: Option<String>,
+    pub position: Option<(i32, i32)>,
 }
 
 impl DisplayOutput {
@@ -320,6 +322,8 @@ impl DisplayOutput {
             color_caps: DisplayColorCapabilities::default(),
             scale: None,
             available_scales: None,
+            transform: None,
+            position: None,
         }
     }
 

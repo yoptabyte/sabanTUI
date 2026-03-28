@@ -30,7 +30,7 @@ default-features = false
 features = ["tokio"]
 
 [features]
-default = ["backend-wlroots", "backend-gnome"]
+default = ["backend-wlroots", "backend-gnome", "backend-kde"]
 backend-x11 = []
 backend-wlroots = []
 backend-gnome = []

@@ -2211,6 +2211,19 @@ impl crate::backend::DisplayBackend for GnomeBackend {
                     out.primary = lm.primary;
                     out.scale = Some(lm.scale);
                     out.available_scales = Self::supported_scales_for_logical_monitor(&monitors, lm);
+                    out.position = Some((lm.x, lm.y));
+                    // Map Mutter transform (0-7) back to string
+                    out.transform = Some(match lm.transform {
+                        0 => "normal".to_string(),
+                        1 => "90".to_string(),
+                        2 => "180".to_string(),
+                        3 => "270".to_string(),
+                        4 => "flipped".to_string(),
+                        5 => "flipped-90".to_string(),
+                        6 => "flipped-180".to_string(),
+                        7 => "flipped-270".to_string(),
+                        _ => "normal".to_string(),
+                    });
 
                     // Current mode: use the mode_id from logical monitor entry, then find matching mode
                     let current_mode_id = lm

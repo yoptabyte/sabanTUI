@@ -195,6 +195,7 @@ impl TuiState {
             BackendKind::X11 => "X11",
             BackendKind::Wlroots => "Wlroots",
             BackendKind::Gnome => "GNOME",
+            BackendKind::Kde => "KDE",
         }
     }
 
@@ -394,7 +395,7 @@ impl TuiState {
                 // Two different concepts:
                 // - On wlroots, we keep the old "wl-mirror window" workflow with scaling.
                 // - On GNOME, use compositor-native display mirroring (Mutter config).
-                if self.backend == BackendKind::Gnome {
+                if self.backend == BackendKind::Gnome || self.backend == BackendKind::Kde {
                     let mut items = vec![];
                     items.push("Unmirror (split displays)".to_string());
                     for other in &self.outputs {
@@ -629,7 +630,7 @@ impl TuiState {
             Field::Mirror => {
                 let items = self.get_dropdown_items();
                 if let Some(item) = items.get(self.dropdown_selection) {
-                    if self.backend == BackendKind::Gnome {
+                    if self.backend == BackendKind::Gnome || self.backend == BackendKind::Kde {
                         if item == "No other outputs available" {
                             return Ok(());
                         }
@@ -696,7 +697,7 @@ impl TuiState {
                 }
             }
             Field::Scale => {
-                if self.backend == BackendKind::Gnome {
+                if self.backend == BackendKind::Gnome || self.backend == BackendKind::Kde {
                     let Some(scales) = output.available_scales.as_ref() else {
                         self.status = format!("{name}: scale not supported on this backend");
                         return Ok(());
