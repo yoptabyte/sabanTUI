@@ -7,7 +7,7 @@ use tokio::time::{timeout, Duration};
 use tracing::info;
 
 use crate::cli::BackendSelector;
-use crate::models::{DisplayMode, DisplayOutput};
+use crate::models::{DisplayMode, DisplayOutput, RelativePosition};
 
 #[cfg(feature = "backend-gnome")]
 use zbus::fdo::DBusProxy;
@@ -147,7 +147,7 @@ pub trait DisplayBackend: Send + Sync {
     async fn set_position(&self, _output: &str, _x: i32, _y: i32) -> Result<()> {
         bail!("set_position not implemented for this backend")
     }
-    async fn set_position_relative(&self, _output: &str, _relative_to: &str, _direction: &str) -> Result<()> {
+    async fn set_position_relative(&self, _output: &str, _direction: RelativePosition) -> Result<()> {
         bail!("set_position_relative not implemented for this backend")
     }
     async fn set_transform(&self, _output: &str, _transform: &str) -> Result<()> {
@@ -261,10 +261,10 @@ impl BackendRegistry {
         })
     }
 
-    pub fn execute_position_relative(&self, kind: BackendKind, output: &str, relative_to: &str, direction: &str) -> Result<()> {
+    pub fn execute_position_relative(&self, kind: BackendKind, output: &str, direction: RelativePosition) -> Result<()> {
         let backend = self.get_backend(kind)?;
         self.runtime.block_on(async move {
-            backend.set_position_relative(output, relative_to, direction).await
+            backend.set_position_relative(output, direction).await
         })
     }
 

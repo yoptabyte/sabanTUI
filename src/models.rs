@@ -308,6 +308,14 @@ pub struct DisplayOutput {
     pub position: Option<(i32, i32)>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RelativePosition {
+    LeftOf(String),
+    RightOf(String),
+    Above(String),
+    Below(String),
+}
+
 impl DisplayOutput {
     pub fn simple(id: usize, name: impl Into<String>, description: Option<String>) -> Self {
         Self {

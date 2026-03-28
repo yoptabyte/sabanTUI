@@ -9,7 +9,7 @@ use zbus::Connection;
 use zbus::Proxy;
 
 use crate::models::{
-    DisplayColorCapabilities, DisplayMode, DisplayOutput,
+    DisplayColorCapabilities, DisplayMode, DisplayOutput, RelativePosition,
 };
 
 #[derive(Deserialize, Debug)]
@@ -84,18 +84,30 @@ enum KScreenRotation {
 impl KScreenRotation {
     fn to_transform(&self) -> String {
         match self {
-            Self::Number(0) => "normal".to_string(),
-            Self::Number(1) => "90".to_string(),
-            Self::Number(2) => "180".to_string(),
-            Self::Number(3) => "270".to_string(),
+            Self::Number(n) => match n {
+                0 => "normal",
+                1 => "90",
+                2 => "180",
+                3 => "270",
+                4 => "flipped",
+                5 => "flipped-90",
+                6 => "flipped-180",
+                7 => "flipped-270",
+                _ => "normal",
+            }
+            .to_string(),
             Self::String(s) => match s.to_lowercase().as_str() {
-                "none" | "0" => "normal".to_string(),
-                "left" | "90" => "90".to_string(),
-                "inverted" | "180" => "180".to_string(),
-                "right" | "270" => "270".to_string(),
-                _ => "normal".to_string(),
-            },
-            _ => "normal".to_string(),
+                "none" | "0" => "normal",
+                "left" | "90" => "90",
+                "inverted" | "180" => "180",
+                "right" | "270" => "270",
+                "flipped" | "flipped0" | "4" => "flipped",
+                "flippedleft" | "flipped90" | "5" => "flipped-90",
+                "flippedinverted" | "flipped180" | "6" => "flipped-180",
+                "flippedright" | "flipped270" | "7" => "flipped-270",
+                _ => "normal",
+            }
+            .to_string(),
         }
     }
 }
@@ -242,26 +254,39 @@ impl crate::backend::DisplayBackend for KdeBackend {
     }
 
     async fn set_position(&self, output: &str, x: i32, y: i32) -> Result<()> {
+        Self::run_kscreen_doctor(&[&format!("output.{}.position.{},{}", output, x, y)])?;
+        Ok(())
+    }
+
+    async fn set_position_relative(&self, output: &str, direction: RelativePosition) -> Result<()> {
+        let (flag, relative_to) = match &direction {
+            RelativePosition::LeftOf(s) => ("left-of", s),
+            RelativePosition::RightOf(s) => ("right-of", s),
+            RelativePosition::Above(s) => ("above", s),
+            RelativePosition::Below(s) => ("below", s),
+        };
+
         Self::run_kscreen_doctor(&[
-            &format!("output.{}.position.{},{}", output, x, y)
+            &format!("output.{}.{}.{}", output, flag, relative_to)
         ])?;
         Ok(())
     }
 
     async fn set_transform(&self, output: &str, transform: &str) -> Result<()> {
         // kscreen-doctor uses "rotation" instead of "transform"
-        // Valid rotations: none, left (90 deg), right (270 deg), inverted (180 deg)
         let rotation = match transform {
             "normal" | "0" | "none" => "none",
             "90" | "left" => "left",
             "180" | "inverted" => "inverted",
             "270" | "right" => "right",
+            "flipped" | "flipped-0" => "flipped",
+            "flipped-90" | "flipped-left" => "flipped90",
+            "flipped-180" | "flipped-inverted" => "flipped180",
+            "flipped-270" | "flipped-right" => "flipped270",
             _ => bail!("unsupported rotation for KDE: {}", transform),
         };
 
-        Self::run_kscreen_doctor(&[
-            &format!("output.{}.rotation.{}", output, rotation)
-        ])?;
+        Self::run_kscreen_doctor(&[&format!("output.{}.rotation.{}", output, rotation)])?;
         Ok(())
     }
 
@@ -283,7 +308,7 @@ impl crate::backend::DisplayBackend for KdeBackend {
                     "org.kde.Solid.PowerManagement.Actions.BrightnessControl",
                 ).await?;
                 // Note: this is often global brightness in older KDE
-                proxy.call::<_, _, ()>("setBrightness", &(val)).await?;
+                proxy.call::<_, _, ()>("setBrightness", &(val,)).await?;
                 return Ok(());
             }
         }
@@ -312,7 +337,7 @@ impl crate::backend::DisplayBackend for KdeBackend {
             ).await?;
 
             // Temperature is usually global in KDE
-            proxy.call::<_, _, ()>("setTemperature", &(value as u32)).await?;
+            proxy.call::<_, _, ()>("setTemperature", &(value as u32,)).await?;
             Ok(())
         }
         #[cfg(not(feature = "backend-kde"))]

@@ -9,7 +9,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration as StdDuration, Instant};
 use tracing::{debug, info};
 
-use crate::models::{DisplayColorCapabilities, DisplayColorSettings, DisplayMode, DisplayOutput};
+use crate::models::{DisplayColorCapabilities, DisplayColorSettings, DisplayMode, DisplayOutput, RelativePosition};
 
 #[cfg(feature = "backend-gnome")]
 use tokio::time::{sleep, Duration};
@@ -2603,10 +2603,10 @@ impl crate::backend::DisplayBackend for GnomeBackend {
         }
     }
 
-    async fn set_position_relative(&self, output: &str, relative_to: &str, direction: &str) -> Result<()> {
+    async fn set_position_relative(&self, output: &str, direction: RelativePosition) -> Result<()> {
         #[cfg(not(feature = "backend-gnome"))]
         {
-            let _ = (output, relative_to, direction);
+            let _ = (output, direction);
             bail!("GNOME backend is disabled at compile time (enable feature backend-gnome)");
         }
 
@@ -2614,13 +2614,21 @@ impl crate::backend::DisplayBackend for GnomeBackend {
         {
             let (serial, monitors, mut logicals, props) = Self::load_state().await?;
 
-            let (out_idx, _) = Self::find_output_logical(&logicals, output)
+            let (out_idx, lm) = Self::find_output_logical(&logicals, output)
                 .ok_or_else(|| anyhow!("Output {output} is disabled"))?;
+
+            let (relative_to, dir_str) = match &direction {
+                RelativePosition::LeftOf(s) => (s, "left"),
+                RelativePosition::RightOf(s) => (s, "right"),
+                RelativePosition::Above(s) => (s, "above"),
+                RelativePosition::Below(s) => (s, "below"),
+            };
+
             let (_rel_idx, rel_lm) = Self::find_output_logical(&logicals, relative_to)
                 .ok_or_else(|| anyhow!("Output {relative_to} is disabled"))?;
 
             // Estimate widths/heights by the first monitor in each logical monitor.
-            let out_size = logicals[out_idx]
+            let out_size = lm
                 .monitors
                 .first()
                 .and_then(|(spec, mode_id, _)| {
@@ -2644,12 +2652,12 @@ impl crate::backend::DisplayBackend for GnomeBackend {
                 })
                 .unwrap_or((0, 0));
 
-            let (new_x, new_y) = match direction {
+            let (new_x, new_y) = match dir_str {
                 "left" => (rel_lm.x.saturating_sub(out_size.0), rel_lm.y),
                 "right" => (rel_lm.x.saturating_add(rel_size.0), rel_lm.y),
                 "above" => (rel_lm.x, rel_lm.y.saturating_sub(out_size.1)),
                 "below" => (rel_lm.x, rel_lm.y.saturating_add(rel_size.1)),
-                _ => bail!("Invalid direction: {direction}"),
+                _ => unreachable!(),
             };
 
             logicals[out_idx].x = new_x;

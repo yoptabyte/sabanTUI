@@ -11,7 +11,7 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use crate::backend::{BackendKind, BackendRegistry};
-use crate::models::DisplayOutput;
+use crate::models::{DisplayOutput, RelativePosition};
 
 const REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -608,16 +608,16 @@ impl TuiState {
                         self.status = "Custom position not yet implemented".to_string();
                     } else if item.starts_with("Left of ") {
                         let target = item.strip_prefix("Left of ").unwrap();
-                        self.apply_position_relative(&name, target, "left")?;
+                        self.apply_position_relative(&name, RelativePosition::LeftOf(target.to_string()))?;
                     } else if item.starts_with("Right of ") {
                         let target = item.strip_prefix("Right of ").unwrap();
-                        self.apply_position_relative(&name, target, "right")?;
+                        self.apply_position_relative(&name, RelativePosition::RightOf(target.to_string()))?;
                     } else if item.starts_with("Above ") {
                         let target = item.strip_prefix("Above ").unwrap();
-                        self.apply_position_relative(&name, target, "above")?;
+                        self.apply_position_relative(&name, RelativePosition::Above(target.to_string()))?;
                     } else if item.starts_with("Below ") {
                         let target = item.strip_prefix("Below ").unwrap();
-                        self.apply_position_relative(&name, target, "below")?;
+                        self.apply_position_relative(&name, RelativePosition::Below(target.to_string()))?;
                     }
                 }
             }
@@ -749,10 +749,10 @@ impl TuiState {
         Ok(())
     }
 
-    fn apply_position_relative(&mut self, output: &str, relative_to: &str, direction: &str) -> Result<()> {
-        self.registry.execute_position_relative(self.backend, output, relative_to, direction)?;
+    fn apply_position_relative(&mut self, output: &str, direction: RelativePosition) -> Result<()> {
+        self.registry.execute_position_relative(self.backend, output, direction.clone())?;
         self.refresh_outputs()?;
-        self.status = format!("{}: positioned {} {}", output, direction, relative_to);
+        self.status = format!("{}: positioned {:?}", output, direction);
         Ok(())
     }
 

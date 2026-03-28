@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-use crate::models::{DisplayColorCapabilities, DisplayColorSettings, DisplayMode, DisplayOutput};
+use crate::models::{DisplayColorCapabilities, DisplayColorSettings, DisplayMode, DisplayOutput, RelativePosition};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct X11ColorState {
@@ -462,20 +462,14 @@ impl crate::backend::DisplayBackend for X11Backend {
         Self::run_xrandr(&["--output", output, "--pos", &pos]).map(|_| ())
     }
 
-    async fn set_position_relative(
-        &self,
-        output: &str,
-        relative_to: &str,
-        direction: &str,
-    ) -> Result<()> {
-        let flag = match direction {
-            "left" => "--left-of",
-            "right" => "--right-of",
-            "above" => "--above",
-            "below" => "--below",
-            _ => bail!("Invalid direction: {}", direction),
+    async fn set_position_relative(&self, output: &str, direction: RelativePosition) -> Result<()> {
+        let (flag, relative_to) = match direction {
+            RelativePosition::LeftOf(s) => ("--left-of", s),
+            RelativePosition::RightOf(s) => ("--right-of", s),
+            RelativePosition::Above(s) => ("--above", s),
+            RelativePosition::Below(s) => ("--below", s),
         };
-        Self::run_xrandr(&["--output", output, flag, relative_to]).map(|_| ())
+        Self::run_xrandr(&["--output", output, flag, &relative_to]).map(|_| ())
     }
 
     async fn set_transform(&self, output: &str, transform: &str) -> Result<()> {

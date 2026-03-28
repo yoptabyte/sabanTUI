@@ -12,7 +12,7 @@ use zbus::{Connection, Error as ZbusError};
 use tokio::time::{sleep, Duration};
 
 use crate::models::{
-    DisplayColorCapabilities, DisplayColorSettings, DisplayMode, DisplayOutput,
+    DisplayColorCapabilities, DisplayColorSettings, DisplayMode, DisplayOutput, RelativePosition,
 };
 
 const GAMMARELAY_DESTINATION: &str = "rs.wl-gammarelay";
@@ -405,19 +405,18 @@ impl crate::backend::DisplayBackend for WlrootsBackend {
             .map(|_| ())
     }
 
-    async fn set_position_relative(&self, output: &str, relative_to: &str, direction: &str) -> Result<()> {
-        let flag = match direction {
-            "left" => "--left-of",
-            "right" => "--right-of",
-            "above" => "--above",
-            "below" => "--below",
-            _ => bail!("Invalid direction: {}", direction),
+    async fn set_position_relative(&self, output: &str, direction: RelativePosition) -> Result<()> {
+        let (flag, relative_to) = match direction {
+            RelativePosition::LeftOf(s) => ("--left-of", s),
+            RelativePosition::RightOf(s) => ("--right-of", s),
+            RelativePosition::Above(s) => ("--above", s),
+            RelativePosition::Below(s) => ("--below", s),
         };
         let args = vec![
             "--output".to_string(),
             output.to_string(),
             flag.to_string(),
-            relative_to.to_string(),
+            relative_to,
         ];
         let ref_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
         Self::run_command(&ref_args)
