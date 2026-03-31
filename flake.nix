@@ -18,6 +18,19 @@
         pkgs = import nixpkgs { inherit system; };
         lib = pkgs.lib;
         cargoLockPath = ./Cargo.lock;
+        runtimePackages =
+          with pkgs;
+          [
+            xorg.xrandr
+            wlr-randr
+            wl-gammarelay-rs
+            wl-mirror
+            glib
+            ddcutil
+          ]
+          ++ lib.optionals (pkgs ? kdePackages && pkgs.kdePackages ? libkscreen) [
+            pkgs.kdePackages.libkscreen
+          ];
         sabantuiPackage =
           if !builtins.pathExists cargoLockPath then
             throw ''Cargo.lock is required to build sabantui. Run `cargo generate-lockfile` first.''
@@ -42,13 +55,13 @@
                 pkgs.dbus
                 pkgs.glib
                 pkgs.wayland
-                pkgs.wlr-randr
-                pkgs.wl-mirror
-                pkgs.wl-gammarelay-rs
-                pkgs.gammastep
                 pkgs.xorg.libX11
                 pkgs.xorg.libXrandr
               ];
+              postFixup = ''
+                wrapProgram "$out/bin/sabantui" \
+                  --prefix PATH : ${lib.makeBinPath runtimePackages}
+              '';
               meta = with lib; {
                 description = "Universal terminal UI for display management across X11, Wayland, GNOME, and KDE";
                 license = licenses.mit;

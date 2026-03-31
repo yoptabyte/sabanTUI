@@ -317,6 +317,16 @@ impl TuiState {
         Ok(())
     }
 
+    fn field_supported_for_output(&self, field: Field, output: &DisplayOutput) -> bool {
+        match field {
+            Field::AdaptiveSync => self.backend == BackendKind::Wlroots,
+            Field::Brightness => output.color_caps.brightness,
+            Field::Gamma => output.color_caps.gamma,
+            Field::Temperature => output.color_caps.temperature,
+            _ => true,
+        }
+    }
+
     fn select_next_output(&mut self) {
         if !self.outputs.is_empty() {
             self.selected_output = (self.selected_output + 1) % self.outputs.len();
@@ -891,7 +901,13 @@ fn render_ui(frame: &mut Frame<'_>, state: &mut TuiState) {
     // Render outputs
     let items: Vec<ListItem> = state.outputs.iter().enumerate().map(|(idx, output)| {
         let is_mirroring = state.mirror_processes.contains_key(&output.name);
-        make_list_item(output, idx == state.selected_output, state.selected_field, is_mirroring)
+        make_list_item(
+            state,
+            output,
+            idx == state.selected_output,
+            state.selected_field,
+            is_mirroring,
+        )
     }).collect();
     
     let outputs_list = List::new(items)
@@ -905,7 +921,13 @@ fn render_ui(frame: &mut Frame<'_>, state: &mut TuiState) {
     }
 }
 
-fn make_list_item(output: &DisplayOutput, is_selected: bool, selected_field: Field, is_mirroring: bool) -> ListItem<'static> {
+fn make_list_item(
+    state: &TuiState,
+    output: &DisplayOutput,
+    is_selected: bool,
+    selected_field: Field,
+    is_mirroring: bool,
+) -> ListItem<'static> {
     let mut primary_line: Vec<Span<'static>> = vec![Span::styled(
         output.name.clone(),
         Style::default().add_modifier(Modifier::BOLD),
@@ -1011,33 +1033,37 @@ fn make_list_item(output: &DisplayOutput, is_selected: bool, selected_field: Fie
         if is_selected && selected_field == Field::Scale { highlight_style } else { normal_style },
     ));
 
-    details_spans.push(Span::raw("| "));
+    if state.field_supported_for_output(Field::AdaptiveSync, output) {
+        details_spans.push(Span::raw("| "));
+        details_spans.push(Span::styled(
+            "VRR ",
+            if is_selected && selected_field == Field::AdaptiveSync { highlight_style } else { normal_style },
+        ));
+    }
 
-    details_spans.push(Span::styled(
-        "VRR ",
-        if is_selected && selected_field == Field::AdaptiveSync { highlight_style } else { normal_style },
-    ));
-    
-    details_spans.push(Span::raw("| "));
-    
-    details_spans.push(Span::styled(
-        format!("Br: {} ", brightness_text),
-        if is_selected && selected_field == Field::Brightness { highlight_style } else { normal_style },
-    ));
-    
-    details_spans.push(Span::raw("| "));
-    
-    details_spans.push(Span::styled(
-        format!("γ: {} ", gamma_text),
-        if is_selected && selected_field == Field::Gamma { highlight_style } else { normal_style },
-    ));
-    
-    details_spans.push(Span::raw("| "));
-    
-    details_spans.push(Span::styled(
-        format!("T: {}", temp_text),
-        if is_selected && selected_field == Field::Temperature { highlight_style } else { normal_style },
-    ));
+    if state.field_supported_for_output(Field::Brightness, output) {
+        details_spans.push(Span::raw("| "));
+        details_spans.push(Span::styled(
+            format!("Br: {} ", brightness_text),
+            if is_selected && selected_field == Field::Brightness { highlight_style } else { normal_style },
+        ));
+    }
+
+    if state.field_supported_for_output(Field::Gamma, output) {
+        details_spans.push(Span::raw("| "));
+        details_spans.push(Span::styled(
+            format!("γ: {} ", gamma_text),
+            if is_selected && selected_field == Field::Gamma { highlight_style } else { normal_style },
+        ));
+    }
+
+    if state.field_supported_for_output(Field::Temperature, output) {
+        details_spans.push(Span::raw("| "));
+        details_spans.push(Span::styled(
+            format!("T: {}", temp_text),
+            if is_selected && selected_field == Field::Temperature { highlight_style } else { normal_style },
+        ));
+    }
 
     let details_line = Line::from(details_spans);
 

@@ -165,6 +165,20 @@ sabantui apply -o <OUTPUT> -e false    # disable output
 
 Run `sabantui apply -h` for the full list of options.
 
+## Nix installation
+
+This repo exports a flake package, so you can install it directly into your user profile:
+
+```bash
+# From inside the repository
+nix profile install .#sabantui
+
+# Or from anywhere with an absolute path to the repo
+nix profile install /path/to/sabanTUI#sabantui
+```
+
+The packaged binary is wrapped so runtime tools such as `xrandr`, `wlr-randr`, `wl-gammarelay-rs`, `wl-mirror`, `gsettings`, and `ddcutil` are available from the Nix profile install. KDE support also uses `kscreen-doctor` when the corresponding package is available in `nixpkgs`.
+
 ## Roadmap
 
 1. ~~Scaffolding: CLI skeleton, backend trait, environment detection~~ ✅
